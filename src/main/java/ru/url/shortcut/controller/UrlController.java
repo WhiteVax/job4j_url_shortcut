@@ -1,6 +1,5 @@
 package ru.url.shortcut.controller;
 
-import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -14,52 +13,49 @@ import org.springframework.web.server.ResponseStatusException;
 import ru.url.shortcut.dto.ConvertRequest;
 import ru.url.shortcut.dto.ConvertResponse;
 import ru.url.shortcut.dto.StatisticResponse;
-import ru.url.shortcut.model.User;
+import ru.url.shortcut.model.Site;
 import ru.url.shortcut.service.SiteService;
-import ru.url.shortcut.service.UserService;
+import ru.url.shortcut.service.UrlService;
 
-import java.net.URI;
 import java.security.Principal;
 import java.util.List;
 
 @RestController
-public class SiteController {
+public class UrlController {
     private final SiteService siteService;
-    private final UserService userService;
+    private final UrlService urlService;
 
-    public SiteController(SiteService siteService, UserService userService) {
+    public UrlController(SiteService siteService, UrlService urlService) {
         this.siteService = siteService;
-        this.userService = userService;
+        this.urlService = urlService;
     }
 
-    @Operation(summary = "Convert URL to short code")
     @SecurityRequirement(name = "bearerAuth")
     @PostMapping("/convert")
-    public ResponseEntity<ConvertResponse> convert(@RequestBody ConvertRequest request,
+    public ResponseEntity<ConvertResponse> convert(@RequestBody ConvertRequest urlRequest,
                                                    Principal principal) {
-        User user = currentUser(principal);
-        return ResponseEntity.ok(siteService.convert(request.url(), user));
+        Site site = currentUser(principal);
+        return ResponseEntity.ok(urlService.convert(urlRequest.url(), site));
     }
 
-    @Operation(summary = "Redirect by short code")
+    @SecurityRequirement(name = "bearerAuth")
+    @GetMapping("/statistic/{domain}")
+    public List<StatisticResponse> statistic(@PathVariable String domain,
+                                                             Principal principal) {
+        return urlService.statisticByDomain(domain, principal);
+    }
+
     @GetMapping("/redirect/{code}")
     public ResponseEntity<Void> redirect(@PathVariable String code) {
-        return siteService.redirectUrl(code)
+        return urlService.redirectUrl(code)
                 .map(url -> ResponseEntity.status(HttpStatus.FOUND)
-                        .header(HttpHeaders.LOCATION, URI.create(url).toString())
+                        .header(HttpHeaders.LOCATION, url.getOriginalUrl())
                         .<Void>build())
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    @Operation(summary = "Get current site URL statistics")
-    @SecurityRequirement(name = "bearerAuth")
-    @GetMapping("/statistic")
-    public ResponseEntity<List<StatisticResponse>> statistic(Principal principal) {
-        return ResponseEntity.ok(siteService.findStatistic(principal.getName()));
-    }
-
-    private User currentUser(Principal principal) {
-        return userService.findByLogin(principal.getName())
+    private Site currentUser(Principal principal) {
+        return siteService.findByLogin(principal.getName())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
     }
 }

@@ -13,6 +13,12 @@ import io.swagger.v3.oas.models.servers.Server;
 import java.util.List;
 
 @Configuration
+@io.swagger.v3.oas.annotations.security.SecurityScheme(
+        name = "bearerAuth",
+        type = io.swagger.v3.oas.annotations.enums.SecuritySchemeType.HTTP,
+        scheme = "bearer",
+        bearerFormat = "JWT"
+)
 public class OpenApiConfig {
 
     @Value("${url-shortcut.openapi.dev-url}")
@@ -23,6 +29,7 @@ public class OpenApiConfig {
 
     @Bean
     public OpenAPI customOpenAPI() {
+
         Server serverDev = new Server()
                 .url(devUrl)
                 .description("Development API");
@@ -31,19 +38,26 @@ public class OpenApiConfig {
                 .url(prodUrl)
                 .description("Production API");
 
-        License license = new License().name("MIT License").url("https://choosealicense.com/licenses/mit/");
+        License license = new License()
+                .name("MIT License")
+                .url("https://choosealicense.com/licenses/mit/");
 
         Info info = new Info()
                 .title("url-shortcut API")
                 .version("1.0")
                 .license(license);
+
         SecurityScheme bearerAuth = new SecurityScheme()
                 .type(SecurityScheme.Type.HTTP)
                 .scheme("bearer")
                 .bearerFormat("JWT");
+
         return new OpenAPI()
                 .info(info)
                 .servers(List.of(serverProd, serverDev))
-                .components(new Components().addSecuritySchemes("bearerAuth", bearerAuth));
+                .components(
+                        new Components()
+                                .addSecuritySchemes("bearerAuth", bearerAuth)
+                );
     }
 }

@@ -15,8 +15,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 import ru.url.shortcut.dto.AuthResponse;
 import ru.url.shortcut.dto.RegistrationResponse;
-import ru.url.shortcut.repository.SiteDataRepository;
-import ru.url.shortcut.repository.UserDataRepository;
+import ru.url.shortcut.service.SiteService;
+import ru.url.shortcut.service.UrlService;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -27,7 +27,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @ActiveProfiles("test")
-class SiteControllerTest {
+class UrlControllerTest {
+
     private static final String SITE = "job4j.ru";
     private static final String URL = "https://job4j.ru/profile/exercise/106/task-view/532";
 
@@ -40,16 +41,10 @@ class SiteControllerTest {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private SiteDataRepository siteDataRepository;
+    private SiteService siteService;
 
     @Autowired
-    private UserDataRepository userDataRepository;
-
-    @AfterEach
-    void clear() {
-        siteDataRepository.deleteAll();
-        userDataRepository.deleteAll();
-    }
+    private UrlService urlService;
 
     @BeforeEach
     void setup() {
@@ -58,67 +53,85 @@ class SiteControllerTest {
                 .build();
     }
 
+    @AfterEach
+    void clear() {
+        urlService.deleteAll();
+        siteService.deleteAll();
+    }
+
     @Test
     void whenRegisterThenReturnCredentials() throws Exception {
         mockMvc.perform(post("/registration")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"site\":\"" + SITE + "\"}"))
+                        .content("""
+                                {
+                                    "site":"%s"
+                                }
+                                """.formatted(SITE)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.registration").value(true))
                 .andExpect(jsonPath("$.login").isNotEmpty())
                 .andExpect(jsonPath("$.password").isNotEmpty());
-    }
-
-    @Test
-    void whenRegisterExistingSiteThenRegistrationFalse() throws Exception {
-        register();
-        mockMvc.perform(post("/registration")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"site\":\"" + SITE + "\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.registration").value(false));
     }
 
     @Test
     void whenConvertWithoutTokenThenUnauthorized() throws Exception {
         mockMvc.perform(post("/convert")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"url\":\"" + URL + "\"}"))
+                        .content("""
+                                {
+                                    "url":"%s"
+                                }
+                                """.formatted(URL)))
                 .andExpect(status().isForbidden());
     }
 
     @Test
-    void whenConvertWithTokenThenReturnCodeAndStatistic() throws Exception {
+    void whenAuthorizedUserConvertUrlThenStatisticReturned() throws Exception {
         String token = token(register());
+
         mockMvc.perform(post("/convert")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"url\":\"" + URL + "\"}"))
+                        .content("""
+                            {
+                                "url":"%s"
+                            }
+                            """.formatted(URL)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").isNotEmpty());
-        mockMvc.perform(get("/statistic")
+
+        mockMvc.perform(get("/statistic/" + SITE)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(2)));
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].url").value(URL));
     }
 
     @Test
     void whenRedirectThenFoundAndStatisticIncremented() throws Exception {
         String token = token(register());
-        String code = mockMvc.perform(post("/convert")
+        String response = mockMvc.perform(post("/convert")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"url\":\"" + URL + "\"}"))
+                        .content("""
+                            {
+                                "url":"%s"
+                            }
+                            """.formatted(URL)))
+                .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        String shortCode = objectMapper.readTree(code).get("code").asText();
+
+        String shortCode = objectMapper.readTree(response)
+                .get("code")
+                .asText();
 
         mockMvc.perform(get("/redirect/" + shortCode))
                 .andExpect(status().isFound())
                 .andExpect(header().string(HttpHeaders.LOCATION, URL));
 
-        mockMvc.perform(get("/statistic")
+        mockMvc.perform(get("/statistic/" + SITE)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].url").value(URL))
@@ -128,10 +141,16 @@ class SiteControllerTest {
     private RegistrationResponse register() throws Exception {
         String response = mockMvc.perform(post("/registration")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"site\":\"" + SITE + "\"}"))
+                        .content("""
+                                {
+                                    "site":"%s"
+                                }
+                                """.formatted(SITE)))
+                .andExpect(status().isCreated())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
+
         return objectMapper.readValue(response, RegistrationResponse.class);
     }
 
@@ -139,12 +158,20 @@ class SiteControllerTest {
         String response = mockMvc.perform(post("/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"login":"%s","password":"%s"}
-                                """.formatted(registration.login(), registration.password())))
+                                {
+                                    "login":"%s",
+                                    "password":"%s"
+                                }
+                                """.formatted(
+                                registration.login(),
+                                registration.password()
+                        )))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        return objectMapper.readValue(response, AuthResponse.class).token();
+
+        return objectMapper.readValue(response, AuthResponse.class)
+                .token();
     }
 }

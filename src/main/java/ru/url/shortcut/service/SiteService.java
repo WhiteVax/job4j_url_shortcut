@@ -1,81 +1,55 @@
 package ru.url.shortcut.service;
 
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import ru.url.shortcut.dto.ConvertResponse;
-import ru.url.shortcut.dto.StatisticResponse;
+import ru.url.shortcut.dto.RegistrationResponse;
+import ru.url.shortcut.model.Role;
 import ru.url.shortcut.model.Site;
-import ru.url.shortcut.model.User;
 import ru.url.shortcut.repository.SiteDataRepository;
 
-import java.security.NoSuchAlgorithmException;
-import java.util.List;
+import java.security.SecureRandom;
 import java.util.Optional;
 
 @Service
 public class SiteService {
+    private static final String SYMBOLS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()";
+    private static final int LOGIN_LENGTH = 12;
+    private static final int PASSWORD_LENGTH = 16;
     private final SiteDataRepository siteData;
-    private final ConvertorService convertorService;
+    private final PasswordEncoder passwordEncoder;
+    private final SecureRandom random = new SecureRandom();
 
-    public SiteService(SiteDataRepository siteDataRepository,
-                       ConvertorService convertorService) {
-        this.siteData = siteDataRepository;
-        this.convertorService = convertorService;
+    public SiteService(SiteDataRepository siteData, PasswordEncoder passwordEncoder) {
+        this.siteData = siteData;
+        this.passwordEncoder = passwordEncoder;
     }
 
-    public Site createSite(String url, User user) {
-        Site site = new Site();
-        site.setUrl(url);
-        site.setCode(uniqueCode(url));
-        site.setTotal(0);
-        site.setUser(user);
-        return siteData.save(site);
+    public RegistrationResponse register(String siteReq) {
+        String login = generateCode(LOGIN_LENGTH);
+        String rawPassword = generateCode(PASSWORD_LENGTH);
+        Site site = Site.builder()
+                .domain(siteReq)
+                .login(login)
+                .password(passwordEncoder.encode(rawPassword))
+                .role(Role.USER)
+                .build();
+        siteData.save(site);
+        return new RegistrationResponse(siteReq, login, rawPassword);
     }
 
-    public ConvertResponse convert(String url, User user) {
-        return siteData.findByUrl(url)
-                .map(site -> new ConvertResponse(site.getCode()))
-                .orElseGet(() -> new ConvertResponse(createSite(url, user).getCode()));
-    }
-
-    public void delete(String url) {
-        siteData.deleteByUrl(url);
-    }
-
-    public List<StatisticResponse> findStatistic(String login) {
-        return siteData.findAllByUserLoginOrderByTotalDesc(login).stream()
-                .map(site -> new StatisticResponse(site.getUrl(), site.getTotal()))
-                .toList();
-    }
-
-    @Transactional
-    public Optional<String> redirectUrl(String code) {
-        int updated = siteData.incrementTotal(code);
-        if (updated == 0) {
-            return Optional.empty();
+    private String generateCode(int length) {
+        StringBuilder result = new StringBuilder(length);
+        for (int i = 0; i < length; i++) {
+            result.append(SYMBOLS.charAt(random.nextInt(SYMBOLS.length())));
         }
-        return siteData.findByCode(code).map(Site::getUrl);
+        return result.toString();
     }
 
-    public Optional<Site> siteFindByUrl(String url) {
-        return siteData.findByUrl(url);
+    public Optional<Site> findByLogin(String name) {
+        return siteData.findByLogin(name);
     }
 
-    private String uniqueCode(String url) {
-        String code = convertUrl(url);
-        int suffix = 1;
-        while (siteData.findByCode(code).isPresent()) {
-            code = convertUrl(url + suffix);
-            suffix++;
-        }
-        return code;
-    }
-
-    private String convertUrl(String url) {
-        try {
-            return convertorService.urlConvertor(url);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("Can not create short code", e);
-        }
+    public void deleteAll() {
+        siteData.deleteAll();
     }
 }

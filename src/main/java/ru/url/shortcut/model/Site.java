@@ -5,13 +5,13 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.*;
 
-@Getter @Setter
-@AllArgsConstructor
-@NoArgsConstructor
 @Entity
+@Getter @Setter
+@AllArgsConstructor @NoArgsConstructor
 @Table(name = "sites")
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 @Schema(description = "sites")
+@Builder
 public class Site {
 
     @Id
@@ -19,19 +19,17 @@ public class Site {
     @EqualsAndHashCode.Include
     private long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id")
-    private User user;
-
-    @Schema(description = "url", example = "google.com")
+    @Schema(description = "domain", example = "google.com")
     @EqualsAndHashCode.Include
     @NotEmpty
-    private String url;
+    private String domain;
 
-    @Schema(description = "short-url", example = "ZRUfdD2")
+    @Schema(description = "login", example = "lfb346")
     @EqualsAndHashCode.Include
-    private String code;
+    private String login;
 
-    @Schema(description = "Total number of calls to this site")
-    private int total;
+    private String password;
+
+    @Enumerated(EnumType.STRING)
+    Role role;
 }

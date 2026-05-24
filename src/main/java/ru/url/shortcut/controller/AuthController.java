@@ -1,9 +1,9 @@
 package ru.url.shortcut.controller;
 
-import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,40 +14,50 @@ import ru.url.shortcut.dto.AuthResponse;
 import ru.url.shortcut.dto.RegistrationRequest;
 import ru.url.shortcut.dto.RegistrationResponse;
 import ru.url.shortcut.security.JwtService;
-import ru.url.shortcut.service.UserService;
+import ru.url.shortcut.service.SiteService;
 
 @RestController
 public class AuthController {
-    private final UserService userService;
+    private final SiteService siteService;
     private final AuthenticationManager authenticationManager;
     private final UserDetailsService userDetailsService;
     private final JwtService jwtService;
 
-    public AuthController(UserService userService,
+    public AuthController(SiteService siteService,
                           AuthenticationManager authenticationManager,
                           UserDetailsService userDetailsService,
                           JwtService jwtService) {
-        this.userService = userService;
+        this.siteService = siteService;
         this.authenticationManager = authenticationManager;
         this.userDetailsService = userDetailsService;
         this.jwtService = jwtService;
     }
 
-    @Operation(summary = "Register site and issue login/password pair")
     @PostMapping("/registration")
     public ResponseEntity<RegistrationResponse> registration(
             @RequestBody RegistrationRequest request) {
-        RegistrationResponse response = userService.register(request.site());
-        HttpStatus status = response.registration() ? HttpStatus.CREATED : HttpStatus.OK;
-        return new ResponseEntity<>(response, status);
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(siteService.register(request.site()));
     }
 
-    @Operation(summary = "Authenticate site account and issue JWT")
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@RequestBody AuthRequest request) {
-        authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(
-                request.login(), request.password()));
-        var userDetails = userDetailsService.loadUserByUsername(request.login());
-        return ResponseEntity.ok(new AuthResponse(jwtService.generateToken(userDetails)));
+    public ResponseEntity<?> login(@RequestBody AuthRequest request) {
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
+                            request.login(),
+                            request.password()
+                    )
+            );
+            var userDetails = userDetailsService.loadUserByUsername(request.login());
+            return ResponseEntity.ok(
+                    new AuthResponse(jwtService.generateToken(userDetails))
+            );
+        } catch (BadCredentialsException ex) {
+            return ResponseEntity
+                    .status(HttpStatus.UNAUTHORIZED)
+                    .body(String.format("Invalid username or password, json body - %s", request));
+        }
     }
 }

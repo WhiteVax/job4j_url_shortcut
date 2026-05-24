@@ -1,17 +1,17 @@
-package ru.url.shortcut.service;
+package ru.url.shortcut.utils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 
-@Service
-public class ConvertorService {
-    private static final Logger LOGGER = LoggerFactory.getLogger(ConvertorService.class);
+@Component
+public class ConvertorForSite {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ConvertorForSite.class);
 
     public String urlConvertor(String url) throws NoSuchAlgorithmException {
         try {
